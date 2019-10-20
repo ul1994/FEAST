@@ -146,7 +146,7 @@ compute_pij_matrix <- function(alphas, sources, observed, sink) {
   return(num_list)
 }
 
-compute_q <- function(alpha, unnorm_gamma, yy, xx, clip_zero=1e-12) {
+compute_q <- function(alpha, unnorm_gamma, yy, xx, unknowns=1, clip_zero=1e-12) {
   pij <- compute_pij_matrix(alpha, unnorm_gamma, yy, xx)
 
   xterm <- 0
@@ -165,7 +165,7 @@ compute_q <- function(alpha, unnorm_gamma, yy, xx, clip_zero=1e-12) {
   xterm <- sum(jsum)
 
   yterm <- c()
-	for (ii in 1:(length(alpha)-1)) {
+	for (ii in 1:(length(alpha)-unknowns)) {
 		jsum <- yy[[ii]] %*% t(log(gamma[[ii]]))
 		yterm <- c(yterm, jsum)
 	}
@@ -191,7 +191,7 @@ do_EM <-function(alphas, sources, observed, sink, iterations, unknowns=1){
     # # print(paste('old qval:', qval))
 
     # Optimized Q method
-    qfast <- compute_q(newalphas, sources, observed, sink)
+    qfast <- compute_q(newalphas, sources, observed, sink, unknowns)
     qhist <- c(qhist, qfast)
 
     curalphas<-E(newalphas, sources)
