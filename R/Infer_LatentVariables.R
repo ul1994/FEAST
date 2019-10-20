@@ -27,7 +27,6 @@ M <- function(alphas, sources, sink, observed){
   num_list <- list()
   source_new <- list()
 
-
   for(i in 1:length(sources)){
     num <- c()
     denom <- c()
@@ -81,7 +80,7 @@ M_basic <- function(alphas, sources, sink){
   return(newAs/(tot))
 }
 
-qval_flat <- function(xx, yy, alpha, gamma, clip_zero=10e-12) {
+qval_flat <- function(xx, yy, alpha, gamma, unknowns=1, clip_zero=1e-12) {
   pij <- pijmat_flat(alpha, gamma)
 	xterm <- 0
 	yterm <- 0
@@ -95,7 +94,7 @@ qval_flat <- function(xx, yy, alpha, gamma, clip_zero=10e-12) {
 		}
 	}
 
-	for (ii in 1:(nrow(gamma)-1)) {
+	for (ii in 1:(nrow(gamma)-unknowns)) {
 		logarg <- gamma[ii,]
 		logarg[is.na(logarg)] <- clip_zero
 		logarg[logarg < clip_zero] <- clip_zero
@@ -146,11 +145,17 @@ compute_pij_matrix <- function(alphas, sources, observed, sink) {
   return(num_list)
 }
 
-compute_q <- function(alpha, unnorm_gamma, yy, xx, unknowns=1, clip_zero=1e-12) {
+compute_q <- function(
+  alpha, unnorm_gamma, yy, xx,
+  unknowns=1, clip_zero=1e-12) {
+
   pij <- compute_pij_matrix(alpha, unnorm_gamma, yy, xx)
 
   xterm <- 0
 	yterm <- 0
+
+  # Clean up Gamma such that it has no zeros or NAs
+  #  This is necessary b/c of logs
   gamma <- lapply(unnorm_gamma, function(row) row / sum(row))
   gamma <- lapply(gamma, function(row) {
     row[is.na(row)] <- clip_zero
@@ -180,18 +185,21 @@ do_EM <-function(alphas, sources, observed, sink, iterations, unknowns=1){
   newalphas<-alphas
   m_guesses<-c(alphas[1])
   qhist <- c()
-  qhist_fast <- c()
+  # qhist_fast <- c()
   for(itr in 1:iterations){
 
-    # Old Q method
+    # # Old Q method
     # smat <- do.call(rbind, sources)
     # ymat <- do.call(rbind, observed)
     # norm_sources <- smat / rowSums(smat)
-    # qval <- qval_flat(sink, ymat, newalphas, norm_sources, clip_zero=10e-12)
-    # # print(paste('old qval:', qval))
+    # qval <- qval_flat(
+    #   sink, ymat, newalphas, norm_sources,
+    #   unknowns)
 
     # Optimized Q method
-    qfast <- compute_q(newalphas, sources, observed, sink, unknowns)
+    qfast <- compute_q(
+      newalphas, sources, observed, sink,
+      unknowns)
     qhist <- c(qhist, qfast)
 
     curalphas<-E(newalphas, sources)
@@ -328,14 +336,10 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 
 Infer.SourceContribution <- function(
-  source = sources_data,
-  sinks = sinks,
+  source = sources_data, sinks = sinks,
   em_itr = 1000,
-  env = rownames(sources_data),
-  include_epsilon = T,
-  COVERAGE,
-  unknown_initialize_flag = 1,
-  unknowns=1) {
+  env = rownames(sources_data), include_epsilon = T, COVERAGE,
+  unknown_initialize_flag = 1, unknowns=1) {
 
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
@@ -344,8 +348,6 @@ Infer.SourceContribution <- function(
 
   source <- tmp[ind_to_use,]
   sinks <- sinks
-
-
 
   #####adding support for multiple sources#####
   if(length(dim(source)[1]) > 0)
@@ -429,6 +431,7 @@ Infer.SourceContribution <- function(
     else {
       #######################################################################
       #' Initialize multiple unknowns
+      #'  Only max of 2 is supported right now
       #######################################################################
 
       groups <- group_by_zero_taxa(source_old, sinks)
@@ -443,7 +446,8 @@ Infer.SourceContribution <- function(
         sink = as.numeric(sink),
         n_sources = nrow(groups$groupB))
 
-      uvectors <- list(u1, u2)
+      uvectors <- list(u1, u2) # TODO: support more than 2
+
       for (ui in 1:unknowns) {
         unknown_source_rarefy <- FEAST_rarefy(
           matrix(uvectors[[ui]], nrow = 1),
@@ -453,8 +457,8 @@ Infer.SourceContribution <- function(
         totalsource <- totalsource_2
 
       }
-      source=lapply(source_2,t)
-      source<- split(totalsource, seq(nrow(totalsource_2)))
+      # source=lapply(source_2,t) #FIXME: equal sign?
+      source<-split(totalsource, seq(nrow(totalsource_2)))
       source<-lapply(source_2, as.matrix)
 
       envs_simulation <- c(1:(num_sources+unknowns))
@@ -465,8 +469,11 @@ Infer.SourceContribution <- function(
   samps<-lapply(samps, t)
 
   observed_samps <- samps
-  observed_samps[[(num_sources + unknowns)]] <- t(rep(0, dim(samps[[1]])[2]))
+  for (ui in 1:unknowns) {
+    observed_samps[[(num_sources + ui)]] <- t(rep(0, dim(samps[[1]])[2]))
+  }
 
+  # print('debug stop')
 
   initalphs<-runif(num_sources+unknowns, 0.0, 1.0)
   initalphs=initalphs/Reduce("+", initalphs)

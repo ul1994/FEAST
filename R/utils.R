@@ -92,8 +92,8 @@ jsdmatrix <- function(x){
 group_by_zero_taxa <- function(raw_sources, sink, eps=0.03) {
 
   sources <- do.call(rbind, lapply(raw_sources, t))
-  print('group_by_zero_taxa:')
-  print(' Grouping by appearence of zeros')
+  # print('group_by_zero_taxa:')
+  # print(' Grouping by appearence of zeros')
   # print(paste('', nrow(sources), ncol(sources)))
 
 	normed <- sources / rowSums(sources)
