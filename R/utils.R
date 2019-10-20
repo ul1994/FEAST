@@ -88,3 +88,41 @@ jsdmatrix <- function(x){
   return(d)
 }
 
+
+group_by_zero_taxa <- function(raw_sources, sink, eps=0.03) {
+
+  sources <- do.call(rbind, lapply(raw_sources, t))
+  print('group_by_zero_taxa:')
+  print(' Grouping by appearence of zeros')
+  # print(paste('', nrow(sources), ncol(sources)))
+
+	normed <- sources / rowSums(sources)
+	mat <- jsdmatrix(normed)
+
+	nk <- nrow(sources)
+	known <- sources[1:nk,]
+	cutoff <- known >= mean(sources)
+	zeros <- known == 0
+
+	bycol <- colSums(zeros)
+	zratio <- bycol / nk
+	halfinds = zratio > (0.5-eps) & zratio < (0.5+eps)
+
+	cols_of_interest <- t(known[, halfinds])
+
+	max_per_taxa <- apply(cols_of_interest, 2, max)
+	split_taxa_ind <- which.max(max_per_taxa)
+	split_by_taxa <- cols_of_interest[split_taxa_ind,]
+
+  groupA <- sources[split_by_taxa == 0,]
+  groupB <- sources[split_by_taxa != 0,]
+  # sinkA <- sink[split_by_taxa == 0]
+  # sinkB <- sink[split_by_taxa != 0]
+
+	# print(paste(length(groupA), length(groupA[[1]])))
+	# print(paste(length(groupB), length(groupB[[1]])))
+  # print(length(sinkA))
+  # print(length(sinkB))
+
+	return(list(groupA=groupA, groupB=groupB))
+}

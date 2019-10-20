@@ -174,7 +174,7 @@ compute_q <- function(alpha, unnorm_gamma, yy, xx, clip_zero=1e-12) {
 	return(xterm + yterm)
 }
 
-do_EM <-function(alphas, sources, observed, sink, iterations){
+do_EM <-function(alphas, sources, observed, sink, iterations, unknowns=1){
 
   curalphas<-alphas
   newalphas<-alphas
@@ -327,8 +327,15 @@ unknown_initialize <- function(sources, sink, n_sources){
 }
 
 
-Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
-                  COVERAGE, unknown_initialize_flag = 1){
+Infer.SourceContribution <- function(
+  source = sources_data,
+  sinks = sinks,
+  em_itr = 1000,
+  env = rownames(sources_data),
+  include_epsilon = T,
+  COVERAGE,
+  unknown_initialize_flag = 1,
+  unknowns=1) {
 
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
@@ -371,7 +378,7 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
     ##Adding the initial value of the unknown source for CLS and EM
     source_2 <- list()
-    totalsource_2 <- matrix(NA, ncol = dim(totalsource_old)[2], nrow = ( dim(totalsource_old)[1] + 1))
+    totalsource_2 <- matrix(NA, ncol = dim(totalsource_old)[2], nrow = ( dim(totalsource_old)[1] + unknowns))
 
     for(j in 1:num_sources){
 
@@ -383,57 +390,96 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
     sinks_rarefy <- FEAST_rarefy(matrix(sinks, nrow = 1), maxdepth = apply(totalsource_old, 1, sum)[1]) #make
 
-    if(num_sources > 1){
+    if (unknowns == 1) {
+      if(num_sources > 1){
 
-      if(unknown_initialize_flag == 1)
-        unknown_source <- unknown_initialize_1(sources = totalsource[c(1:num_sources),], sink = as.numeric(sinks),
+        if(unknown_initialize_flag == 1)
+          unknown_source <- unknown_initialize_1(sources = totalsource[c(1:num_sources),], sink = as.numeric(sinks),
+                                                n_sources = num_sources)
+
+
+        if(unknown_initialize_flag == 0)
+          unknown_source <- unknown_initialize(sources = totalsource[c(1:num_sources),], sink = as.numeric(sinks),
                                               n_sources = num_sources)
+      }
+
+      if(num_sources == 1){
+
+        if(unknown_initialize_flag == 1)
+          unknown_source <- unknown_initialize_1(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
+                                                n_sources = num_sources)
 
 
-      if(unknown_initialize_flag == 0)
-        unknown_source <- unknown_initialize(sources = totalsource[c(1:num_sources),], sink = as.numeric(sinks),
-                                            n_sources = num_sources)
-    }
-
-    if(num_sources == 1){
-
-      if(unknown_initialize_flag == 1)
-        unknown_source <- unknown_initialize_1(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
+        if(unknown_initialize_flag == 0)
+          unknown_source <- unknown_initialize(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
                                               n_sources = num_sources)
+      }
 
+      unknown_source_rarefy <- FEAST_rarefy(matrix(unknown_source, nrow = 1), maxdepth = COVERAGE)
+      source_2[[j+1]] <- t(unknown_source_rarefy)
+      totalsource_2[(j+1),] <- t(unknown_source_rarefy)
+      totalsource <- totalsource_2
 
-      if(unknown_initialize_flag == 0)
-        unknown_source <- unknown_initialize(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
-                                            n_sources = num_sources)
+      source=lapply(source_2,t)
+      source<- split(totalsource, seq(nrow(totalsource_2)))
+      source<-lapply(source_2, as.matrix)
+
+      envs_simulation <- c(1:(num_sources+1))
     }
+    else {
+      #######################################################################
+      #' Initialize multiple unknowns
+      #######################################################################
 
-    unknown_source_rarefy <- FEAST_rarefy(matrix(unknown_source, nrow = 1), maxdepth = COVERAGE)
-    source_2[[j+1]] <- t(unknown_source_rarefy)
-    totalsource_2[(j+1),] <- t(unknown_source_rarefy)
-    totalsource <- totalsource_2
+      groups <- group_by_zero_taxa(source_old, sinks)
 
-    source=lapply(source_2,t)
-    source<- split(totalsource, seq(nrow(totalsource_2)))
-    source<-lapply(source_2, as.matrix)
+      u1 <- unknown_initialize_1(
+        sources = groups$groupA,
+        sink = as.numeric(sink),
+        n_sources = nrow(groups$groupA))
 
-    envs_simulation <- c(1:(num_sources+1))
+      u2 <- unknown_initialize_1(
+        sources = groups$groupB,
+        sink = as.numeric(sink),
+        n_sources = nrow(groups$groupB))
 
+      uvectors <- list(u1, u2)
+      for (ui in 1:unknowns) {
+        unknown_source_rarefy <- FEAST_rarefy(
+          matrix(uvectors[[ui]], nrow = 1),
+          maxdepth = COVERAGE)
+        source_2[[j+ui]] <- t(unknown_source_rarefy)
+        totalsource_2[(j+ui),] <- t(unknown_source_rarefy)
+        totalsource <- totalsource_2
+
+      }
+      source=lapply(source_2,t)
+      source<- split(totalsource, seq(nrow(totalsource_2)))
+      source<-lapply(source_2, as.matrix)
+
+      envs_simulation <- c(1:(num_sources+unknowns))
+    }
   }
-
 
   samps <- source
   samps<-lapply(samps, t)
 
   observed_samps <- samps
-  observed_samps[[(num_sources + 1)]] <- t(rep(0, dim(samps[[1]])[2]))
+  observed_samps[[(num_sources + unknowns)]] <- t(rep(0, dim(samps[[1]])[2]))
 
 
-  initalphs<-runif(num_sources+1, 0.0, 1.0)
+  initalphs<-runif(num_sources+unknowns, 0.0, 1.0)
   initalphs=initalphs/Reduce("+", initalphs)
   sink_em <- as.matrix(sinks)
   pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
 
-  tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps)
+  tmp<-do_EM(
+    alphas=initalphs,
+    sources=samps,
+    sink=sink_em,
+    iterations=em_itr,
+    observed=observed_samps,
+    unknowns=unknowns)
   pred_emnoise <- tmp$toret
 
   k <- 1
@@ -458,18 +504,18 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
   }
 
-  pred_emnoise_all[j+1] <- pred_emnoise[k]
-  pred_em_all[j+1] <- pred_em[k]
-
-
-
-  names(pred_emnoise_all) <- c(env,"unknown")
-  names(pred_em_all) <- c(env,"unknown")
-
+  for (ui in 1:unknowns) {
+    pred_emnoise_all[j+ui] <- pred_emnoise[k+ui-1]
+    pred_em_all[j+ui] <- pred_em[k+ui-1]
+    env <- c(env, 'unknown')
+  }
+  names(pred_emnoise_all) <- env
+  names(pred_em_all) <- env
 
   Results <- list(
-    unknown_source = unknown_source,
-    unknown_source_rarefy = unknown_source_rarefy,
+    # FIXME: case of multiple unknowns
+    # unknown_source = unknown_source,
+    # unknown_source_rarefy = unknown_source_rarefy,
     data_prop = data.frame(pred_emnoise_all,pred_em_all),
     qhist=tmp$qhist,
     qhist_fast=tmp$qhist_fast
