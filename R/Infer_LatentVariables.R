@@ -81,25 +81,133 @@ M_basic <- function(alphas, sources, sink){
   return(newAs/(tot))
 }
 
+qval_flat <- function(xx, yy, alpha, gamma, clip_zero=10e-12) {
+  pij <- pijmat_flat(alpha, gamma)
+	xterm <- 0
+	yterm <- 0
+	for (ii in 1:nrow(gamma)) {
+		for (jj in 1:ncol(gamma)) {
+			logarg <- alpha[ii]*gamma[ii, jj]
+			if (is.na(logarg) || logarg < clip_zero) logarg <- clip_zero
+
+			term <- xx[jj]*pij[ii, jj]*log(logarg)
+			xterm <- xterm + term
+		}
+	}
+
+	for (ii in 1:(nrow(gamma)-1)) {
+		logarg <- gamma[ii,]
+		logarg[is.na(logarg)] <- clip_zero
+		logarg[logarg < clip_zero] <- clip_zero
+
+		term <- yy[ii,] %*% log(logarg)
+		yterm <- yterm + term
+	}
+
+	return(xterm + yterm)
+}
+
+pijmat_flat <- function(alpha, gamma) {
+	pij <- matrix(, nrow=nrow(gamma), ncol=ncol(gamma))
+	for (ii in 1:nrow(gamma)) {
+		for (jj in 1:ncol(gamma)) {
+			num <- alpha[ii]*gamma[ii, jj]
+			if (num == 0) val <- 0
+			else
+				val <- num / (alpha %*% gamma[, jj])
+			pij[ii, jj] <- val
+		}
+	}
+	return(pij)
+}
+
+compute_pij_matrix <- function(alphas, sources, observed, sink) {
+
+  BOs<-t(mapply(crossprod, x=sources, y=alphas))
+  BOs<-split(BOs, seq(nrow(BOs)))
+  BOs<-lapply(BOs, as.matrix)
+  BOs<-lapply(BOs, t)
+
+  # BOs (K x N) is reduced into (K)
+  #  This is the sum term for p_ij which is same for 1...I
+  #  Result is a size N of j-index sums (denominators)
+  denom_sums <- Reduce("+", BOs)
+
+  num_list <- list()
+  for(i in 1:length(sources)){
+    pijval<-BOs[[i]]/denom_sums
+
+    # NOTE: replace na with zero
+    pijval<-rapply(list(pijval), f=function(x) ifelse(is.nan(x),0,x), how="replace" )
+
+    num_list[[i]]<- pijval[[1]][1,]
+  }
+
+  return(num_list)
+}
+
+compute_q <- function(alpha, unnorm_gamma, yy, xx, clip_zero=1e-12) {
+  pij <- compute_pij_matrix(alpha, unnorm_gamma, yy, xx)
+
+  xterm <- 0
+	yterm <- 0
+  gamma <- lapply(unnorm_gamma, function(row) row / sum(row))
+  gamma <- lapply(gamma, function(row) {
+    row[is.na(row)] <- clip_zero
+    row[row < clip_zero] <- clip_zero
+    return (row)
+  })
+
+  jsum <- c()
+  for (ii in 1:length(alpha)) {
+    jsum <- c(jsum, sum(xx * pij[[ii]] * log(alpha[ii] * gamma[[ii]])))
+  }
+  xterm <- sum(jsum)
+
+  yterm <- c()
+	for (ii in 1:(length(alpha)-1)) {
+		jsum <- yy[[ii]] %*% t(log(gamma[[ii]]))
+		yterm <- c(yterm, jsum)
+	}
+  yterm <- sum(yterm)
+
+	return(xterm + yterm)
+}
 
 do_EM <-function(alphas, sources, observed, sink, iterations){
 
   curalphas<-alphas
   newalphas<-alphas
   m_guesses<-c(alphas[1])
+  qhist <- c()
+  qhist_fast <- c()
   for(itr in 1:iterations){
+
+    # Old Q method
+    # smat <- do.call(rbind, sources)
+    # ymat <- do.call(rbind, observed)
+    # norm_sources <- smat / rowSums(smat)
+    # qval <- qval_flat(sink, ymat, newalphas, norm_sources, clip_zero=10e-12)
+    # # print(paste('old qval:', qval))
+
+    # Optimized Q method
+    qfast <- compute_q(newalphas, sources, observed, sink)
+    qhist <- c(qhist, qfast)
 
     curalphas<-E(newalphas, sources)
     tmp <- M(alphas = curalphas, sources = sources, sink = sink, observed = observed)
     newalphas <- tmp$new_alpha
     sources <- tmp$new_sources
 
+    # TODO: collect Q values for inspection
     m_guesses<-c(m_guesses, newalphas[1])
     if(abs(m_guesses[length(m_guesses)]-m_guesses[length(m_guesses)-1])<=10^-6) break
 
   }
   toret<-c(newalphas)
-  results <- list(toret = toret, sources = sources)
+  results <- list(
+    toret = toret, sources = sources,
+    qhist=qhist)
 
   return(results)
 }
@@ -359,8 +467,14 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   names(pred_em_all) <- c(env,"unknown")
 
 
-  Results <- list(unknown_source = unknown_source, unknown_source_rarefy = unknown_source_rarefy,
-                 data_prop = data.frame(pred_emnoise_all,pred_em_all))
+  Results <- list(
+    unknown_source = unknown_source,
+    unknown_source_rarefy = unknown_source_rarefy,
+    data_prop = data.frame(pred_emnoise_all,pred_em_all),
+    qhist=tmp$qhist,
+    qhist_fast=tmp$qhist_fast
+  )
+
   return(Results)
 
 }

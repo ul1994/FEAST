@@ -1,0 +1,4 @@
+*.DS_Store
+*scratch.R
+*.Rhistory
+Data_files
