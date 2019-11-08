@@ -220,7 +220,8 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
-                  COVERAGE, unknown_initialize_flag = 1){
+                  COVERAGE, unknown_initialize_flag = 1,
+                  alpha_init=NA){
 
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
@@ -333,6 +334,9 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
     initalphs<-runif(num_sources+1, 0.0, 1.0)
   else
     initalphs<-runif(num_sources, 0.0, 1.0)
+  if (length(alpha_init) > 1) { # if not NA
+    initalphs <- alpha_init
+  }
   initalphs=initalphs/Reduce("+", initalphs)
   sink_em <- as.matrix(sinks)
 
