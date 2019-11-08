@@ -311,18 +311,31 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
     envs_simulation <- c(1:(num_sources+1))
 
   }
+  else {
+    source_2 <- source_old
+    totalsource_2 <- totalsource_old
+    totalsource <- totalsource_2
+
+    source<- split(totalsource, seq(nrow(totalsource_2)))
+    source<-lapply(source_2, as.matrix)
+  }
 
 
   samps <- source
   samps<-lapply(samps, t)
 
   observed_samps <- samps
-  observed_samps[[(num_sources + 1)]] <- t(rep(0, dim(samps[[1]])[2]))
+  if (include_epsilon)
+    observed_samps[[(num_sources + 1)]] <- t(rep(0, dim(samps[[1]])[2]))
 
 
-  initalphs<-runif(num_sources+1, 0.0, 1.0)
+  if (include_epsilon)
+    initalphs<-runif(num_sources+1, 0.0, 1.0)
+  else
+    initalphs<-runif(num_sources, 0.0, 1.0)
   initalphs=initalphs/Reduce("+", initalphs)
   sink_em <- as.matrix(sinks)
+
   pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
 
   tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps)
@@ -348,6 +361,11 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
       pred_em_all[j] <- 0
     }
 
+  }
+
+  if (!include_epsilon) {
+    Results <- list(data_prop = data.frame(pred_emnoise_all,pred_em_all))
+    return(Results)
   }
 
   pred_emnoise_all[j+1] <- pred_emnoise[k]
