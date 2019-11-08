@@ -99,7 +99,7 @@ do_EM <-function(alphas, sources, observed, sink, iterations){
 
   }
   toret<-c(newalphas)
-  results <- list(toret = toret, sources = sources)
+  results <- list(toret = toret, sources = sources, itr=itr)
 
   return(results)
 }
@@ -368,7 +368,7 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   }
 
   if (!include_epsilon) {
-    Results <- list(data_prop = data.frame(pred_emnoise_all,pred_em_all))
+    Results <- list(gamma=tmp$source, itr=tmp$itr, data_prop = data.frame(pred_emnoise_all,pred_em_all))
     return(Results)
   }
 
