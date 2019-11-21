@@ -221,7 +221,7 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
                   COVERAGE, unknown_initialize_flag = 1,
-                  alpha_init=NA){
+                  alpha_init=NA, unknown_init=NA){
 
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
@@ -298,6 +298,9 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
       if(unknown_initialize_flag == 0)
         unknown_source <- unknown_initialize(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
                                             n_sources = num_sources)
+      if(unknown_initialize_flag == 2) {
+        unknown_source <- unknown_init
+      }
     }
 
     unknown_source_rarefy <- FEAST_rarefy(matrix(unknown_source, nrow = 1), maxdepth = COVERAGE)
