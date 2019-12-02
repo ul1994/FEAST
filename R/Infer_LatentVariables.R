@@ -82,7 +82,7 @@ M_basic <- function(alphas, sources, sink){
 }
 
 
-do_EM <-function(alphas, sources, observed, sink, iterations){
+do_EM <-function(alphas, sources, observed, sink, iterations, callback){
 
   curalphas<-alphas
   newalphas<-alphas
@@ -96,7 +96,7 @@ do_EM <-function(alphas, sources, observed, sink, iterations){
 
     m_guesses<-c(m_guesses, newalphas[1])
     if(abs(m_guesses[length(m_guesses)]-m_guesses[length(m_guesses)-1])<=10^-6) break
-
+    callback(itr, iterations)
   }
   toret<-c(newalphas)
   results <- list(toret = toret, sources = sources, itr=itr)
@@ -218,11 +218,14 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 }
 
+feast_progress <- function(ii, nn) {
+  cat('\r', sprintf('[%d/%d]', ii, nn))
+}
 
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
                   COVERAGE, unknown_initialize_flag = 1,
-                  alpha_init=NA, unknown_init=NA){
-
+                  alpha_init=NA, unknown_init=NA,
+                  callback=feast_progress){
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
   ind_to_use <- as.numeric(which(test_zeros > 0))
@@ -230,8 +233,6 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
   source <- tmp[ind_to_use,]
   sinks <- sinks
-
-
 
   #####adding support for multiple sources#####
   if(length(dim(source)[1]) > 0)
@@ -324,7 +325,6 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
     source<-lapply(source_2, as.matrix)
   }
 
-
   samps <- source
   samps<-lapply(samps, t)
 
@@ -345,7 +345,7 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
   pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
 
-  tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps)
+  tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps, callback)
   pred_emnoise <- tmp$toret
 
   k <- 1
@@ -385,7 +385,8 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
 
   Results <- list(unknown_source = unknown_source, unknown_source_rarefy = unknown_source_rarefy,
-                 data_prop = data.frame(pred_emnoise_all,pred_em_all))
+                 data_prop = data.frame(pred_emnoise_all,pred_em_all),
+                 gamma=tmp$source, itr=tmp$itr)
   return(Results)
 
 }
