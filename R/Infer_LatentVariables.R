@@ -95,8 +95,9 @@ do_EM <-function(alphas, sources, observed, sink, iterations, callback){
     sources <- tmp$new_sources
 
     m_guesses<-c(m_guesses, newalphas[1])
-    if(abs(m_guesses[length(m_guesses)]-m_guesses[length(m_guesses)-1])<=10^-6) break
-    callback(itr, iterations)
+    alpha_change <- abs(m_guesses[length(m_guesses)]-m_guesses[length(m_guesses)-1])
+    callback(itr, iterations, alpha_change)
+    if(alpha_change<=10^-6) break
   }
   toret<-c(newalphas)
   results <- list(toret = toret, sources = sources, itr=itr)
@@ -224,7 +225,7 @@ feast_progress <- function(ii, nn) {
 
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
                   COVERAGE, unknown_initialize_flag = 1,
-                  alpha_init=NA, unknown_init=NA,
+                  alpha_init=NA, gamma_init=NA, unknown_init=NA,
                   callback=feast_progress){
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
