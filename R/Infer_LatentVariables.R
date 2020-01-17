@@ -127,7 +127,11 @@ unknown_initialize_1 <- function(sources, sink, n_sources){
 
 
   unknown_source <- rep(0, length(sink))
-  sources_sum <- apply(sources, 2 ,sum)
+  if (length(sources) == 1) {
+    sources_sum <- sources[[1]]
+  } else {
+    sources_sum <- apply(sources, 2 ,sum)
+  }
 
 
   unknown_source <- c()
