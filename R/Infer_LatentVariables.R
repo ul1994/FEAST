@@ -126,15 +126,17 @@ do_EM_basic <- function(alphas, sources, sink, iterations){
 unknown_initialize_1 <- function(sources, sink, n_sources){
 
 
+  # print((nrow(sources))
+  if (ncol(sources) == 1) sources <- t(sources)
+  # print(paste('Nrow', nrow(sources)))
+  # print(paste('Ncol', ncol(sources)))
   unknown_source <- rep(0, length(sink))
-  if (length(sources) == 1) {
-    sources_sum <- sources[[1]]
-  } else {
-    sources_sum <- apply(sources, 2 ,sum)
-  }
+  sources_sum <- apply(sources, 2 ,sum)
+  print(paste('sum', sum(sources_sum)))
+  print(paste('dim', dim(sources_sum)))
 
 
-  unknown_source <- c()
+  unknown_source <- rep(0, ncol(sources))
 
   if(n_sources > 1){
 
@@ -196,7 +198,6 @@ unknown_initialize_1 <- function(sources, sink, n_sources){
 
 
 
-
   return(unknown_source)
 
 }
@@ -223,13 +224,10 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 }
 
-feast_progress <- function(ii, nn) {
-  cat('\r', sprintf('[%d/%d]', ii, nn))
-}
-
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
                   COVERAGE, unknown_initialize_flag = 1,
                   alpha_init=NA, gamma_init=NA, unknown_init=NA,
+                  rarefy_unknown=T,
                   callback=feast_progress){
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
@@ -304,12 +302,19 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
       if(unknown_initialize_flag == 0)
         unknown_source <- unknown_initialize(sources = t(as.matrix(totalsource[c(1:num_sources),])), sink = as.numeric(sinks),
                                             n_sources = num_sources)
-      if(unknown_initialize_flag == 2) {
-        unknown_source <- unknown_init
-      }
     }
 
-    unknown_source_rarefy <- FEAST_rarefy(matrix(unknown_source, nrow = 1), maxdepth = COVERAGE)
+    if(unknown_initialize_flag == 2) {
+      unknown_source <- unknown_init
+    }
+
+    if(!rarefy_unknown) {
+      # just keep the given counts
+      unknown_source_rarefy <- t(unknown_source)
+    } else {
+      unknown_source_rarefy <- FEAST_rarefy(matrix(unknown_source, nrow = 1), maxdepth = COVERAGE)
+    }
+
     source_2[[j+1]] <- t(unknown_source_rarefy)
     totalsource_2[(j+1),] <- t(unknown_source_rarefy)
     totalsource <- totalsource_2
@@ -348,6 +353,10 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   initalphs=initalphs/Reduce("+", initalphs)
   sink_em <- as.matrix(sinks)
 
+  print(initalphs)
+  print(unlist(lapply(samps, sum)))
+  print(sum(unknown_source_rarefy))
+  print(sum(sink_em))
   pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
 
   tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps, callback)
