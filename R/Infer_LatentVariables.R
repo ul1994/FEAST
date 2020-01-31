@@ -132,8 +132,8 @@ unknown_initialize_1 <- function(sources, sink, n_sources){
   # print(paste('Ncol', ncol(sources)))
   unknown_source <- rep(0, length(sink))
   sources_sum <- apply(sources, 2 ,sum)
-  print(paste('sum', sum(sources_sum)))
-  print(paste('dim', dim(sources_sum)))
+  # print(paste('sum', sum(sources_sum)))
+  # print(paste('dim', dim(sources_sum)))
 
 
   unknown_source <- rep(0, ncol(sources))
@@ -398,9 +398,12 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   names(pred_em_all) <- c(env,"unknown")
 
 
-  Results <- list(unknown_source = unknown_source, unknown_source_rarefy = unknown_source_rarefy,
-                 data_prop = data.frame(pred_emnoise_all,pred_em_all),
-                 gamma=tmp$source, itr=tmp$itr)
+  Results <- list(
+    unknown_source = unknown_source,
+    unknown_source_rarefy = unknown_source_rarefy,
+    data_prop = data.frame(pred_emnoise_all,pred_em_all),
+    gamma=tmp$source,
+    itr=tmp$itr)
   return(Results)
 
 }
