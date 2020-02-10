@@ -42,7 +42,13 @@
 #'
 #' @export
 FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_sources_flag,
-                  dir_path, outfile){
+                  rarefy_sink=T,
+                  dir_path=NA, outfile=NA,
+
+                  # new arguments
+                  alpha_init=NA, unknown_init=NA,
+                  callback=feast_progress
+                ){
 
   ###1. Parse metadata and check it has the correct hearer (i.e., Env, SourceSink,	id)
   if(sum(colnames(metadata)=='Env')==0) stop("The metadata file must contain an 'Env' column naming the source environment for each sample.")
@@ -94,7 +100,7 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
   ###Quantify the sources' contribution for each sink sample separately
 
   for(it in 1:num_sinks){
-    
+
     if(it%%10==0 || it == num_sinks)
       print(paste0("Calculating mixinig proportions for sink ", it))
 
@@ -123,11 +129,29 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
     if(length(train.ix) > 1)
       sources <- as.matrix(FEAST_rarefy(C[train.ix,], COVERAGE))
 
-    sinks <- as.matrix(FEAST_rarefy(t(as.matrix(C[test.ix,])), COVERAGE))
+    if (rarefy_sink) {
+      sinks <- as.matrix(FEAST_rarefy(t(as.matrix(C[test.ix,])), COVERAGE))
+    } else {
+      sinks <- as.matrix(t(as.matrix(C[test.ix,])))
+    }
 
 
     ###10. Estimate source proportions for each sink
-    FEAST_output<-Infer.SourceContribution(source=sources, sinks = t(sinks), env = envs[train.ix], em_itr = EM_iterations, COVERAGE = COVERAGE)
+    # FEAST_output<-Infer.SourceContribution(source=sources, sinks = t(sinks), env = envs[train.ix], em_itr = EM_iterations, COVERAGE = COVERAGE)
+    FEAST_output<-Infer.SourceContribution(
+      source=sources,
+      sinks = t(sinks),
+      env = envs[train.ix],
+      em_itr = EM_iterations,
+      COVERAGE = COVERAGE,
+
+      include_epsilon=T,
+      alpha_init=alpha_init,
+      unknown_initialize_flag=if(!is.na(sum(unknown_init))) 2 else 1,
+      unknown_init=unknown_init,
+      rarefy_unknown=T,
+      callback=callback
+    )
 
     idx.sources <- which(all_sources_sampleID %in% rownames(metadata)[train.ix])
     proportions_mat[it,c(idx.sources, idx.unknown)] <- FEAST_output$data_prop[,1]
@@ -144,8 +168,10 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
   rownames(proportions_mat) <- envs_sink
   # proportions_mat[is.na(proportions_mat)] <- 999
 
-  setwd(dir_path)
-  write.table(proportions_mat, file = paste0(outfile,"_source_contributions_matrix.txt"), sep = "\t")
+  if (!is.na(dir_path)) {
+    setwd(dir_path)
+    write.table(proportions_mat, file = paste0(outfile,"_source_contributions_matrix.txt"), sep = "\t")
+  }
   return(proportions_mat)
 
 }
