@@ -126,17 +126,11 @@ do_EM_basic <- function(alphas, sources, sink, iterations){
 unknown_initialize_1 <- function(sources, sink, n_sources){
 
 
-  # print((nrow(sources))
   if (ncol(sources) == 1) sources <- t(sources)
-  # print(paste('Nrow', nrow(sources)))
-  # print(paste('Ncol', ncol(sources)))
   unknown_source <- rep(0, length(sink))
   sources_sum <- apply(sources, 2 ,sum)
-  # print(paste('sum', sum(sources_sum)))
-  # print(paste('dim', dim(sources_sum)))
 
 
-  unknown_source <- rep(0, ncol(sources))
 
   if(n_sources > 1){
 
@@ -176,7 +170,8 @@ unknown_initialize_1 <- function(sources, sink, n_sources){
     if(length(ind_cor_all) > 1){
 
       cor_abundance <- round(apply(sources[,ind_cor_all], 2, min)/2) #take the min abundnace of the 'cor'
-      unknown_source[ind_cor_all] <- 0
+      # unknown_source[ind_cor_all] <- 0
+      unknown_source[ind_cor_all] <- cor_abundance
 
 
     }
@@ -226,7 +221,7 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
                   COVERAGE, unknown_initialize_flag = 1,
-                  alpha_init=NA, gamma_init=NA, unknown_init=NA,
+                  alpha_init=NA, unknown_init=NA,
                   rarefy_unknown=T,
                   callback=feast_progress){
   tmp <- source
@@ -259,10 +254,11 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   source_old <- source
   totalsource_old <- totalsource
 
-  source_old<-lapply(source_old,t)
-  source_old<- split(totalsource_old, seq(nrow(totalsource_old)))
-  source_old<-lapply(source_old, as.matrix)
+  source_old <- lapply(source_old,t)
+  source_old <- split(totalsource_old, seq(nrow(totalsource_old)))
+  source_old <- lapply(source_old, as.matrix)
 
+  unknown_source_rarefy <- NA
   #Creating the unknown source per mixing iteration
   if(include_epsilon == TRUE){
 
@@ -278,7 +274,9 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
     #create unknown for each sink i
 
+    print(paste('Sink count:', sum(sinks)))
     sinks_rarefy <- FEAST_rarefy(matrix(sinks, nrow = 1), maxdepth = apply(totalsource_old, 1, sum)[1]) #make
+    print(paste('Rarefying sink:', sum(sinks_rarefy)))
 
     if(num_sources > 1){
 
