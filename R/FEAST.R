@@ -41,14 +41,71 @@
 #' }
 #'
 #' @export
-FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_sources_flag,
-                  rarefy_sink=T,
-                  dir_path=NA, outfile=NA,
 
-                  # new arguments
-                  alpha_init=NA, unknown_init=NA,
-                  callback=feast_progress
-                ){
+library(glmnet)
+
+lsq_glmnet_l1l2 <- function(
+	sink, sources,
+	l1l2=1, lambda=1e-6,
+	normalize=T) {
+
+	if (normalize) {
+		sources <- sources / rowSums(sources)
+		sink <- sink / sum(sink)
+	}
+
+	Amat <- model.matrix(~Sources, list(Sources=t(sources)))
+	result <- glmnet(Amat, sink, alpha=l1l2, lambda=lambda, lower.limits=0)
+
+	contr <- result$beta[2:length(result$beta)]
+
+	return (contr)
+}
+
+lsq_procedure <- function(sources, sink, unknown_eps=0.01) {
+  weights_l1 <- lsq_glmnet_l1l2(
+    sink,
+    sources,
+    normalize=F,
+    l1l2=1)
+  lsq_init <- weights_l1 / sum(weights_l1)
+
+  # 1. The alpha init
+  alpha_init <- c(lsq_init, unknown_eps)
+	alpha_init <- alpha_init / sum(alpha_init)
+
+  # 2. The unknown init
+  max_source <- many_sources[which.max(weights_l1),]
+
+	# We scale the max source according to its given weight
+	mixed_max <- max_source * max(weights_l1)
+	unknown_init <- sink - mixed_max
+
+	# unknown_init <- sink - max_source
+	unknown_init[unknown_init < 0] <- 0   # clip at zero
+
+  return (list(
+    lsq=weights_l1,
+    alpha=alpha_init,
+    unknown=unknown_init
+  ))
+}
+
+# Default arguments are set to reproduce simulation results
+FEAST <- function(C, metadata, EM_iterations=1000,
+    COVERAGE=20000,
+    different_sources_flag=0,
+    lsq=T, # Enables LsqFEAST procedure
+    rarefy_sink=F,
+    dir_path=NA, outfile=NA,
+
+    # A way to directly pass init arguments if needed
+    #  This will override inits of LsqFEAST
+    alpha_init=NA, unknown_init=NA,
+
+    # function to printout progress of EM
+    callback=feast_progress
+  ){
 
   ###1. Parse metadata and check it has the correct hearer (i.e., Env, SourceSink,	id)
   if(sum(colnames(metadata)=='Env')==0) stop("The metadata file must contain an 'Env' column naming the source environment for each sample.")
@@ -116,6 +173,7 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
     ###7. Set the number of sources per sink
     num_sources <- length(train.ix)
 
+
     ###8. Set defualt COVERAGE
     if(is.null(COVERAGE))
       COVERAGE <-  min(rowSums(C[c(train.ix, test.ix),]))
@@ -136,18 +194,35 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
     }
 
 
+    ###7.5 Perform LSQ Procedure if needed
+    inits <- NA
+    if (lsq) {
+      print('Performing LsqFEAST Initialization...')
+
+      inits <- lsq_procedure(
+        sources,
+        sinks
+      )
+
+      if (is.na(sum(alpha_init)))
+        alpha_init <- inits$alpha
+      if (is.na(sum(unknown_init)))
+        unknown_init <- inits$unknown
+    }
+
     ###10. Estimate source proportions for each sink
     # FEAST_output<-Infer.SourceContribution(source=sources, sinks = t(sinks), env = envs[train.ix], em_itr = EM_iterations, COVERAGE = COVERAGE)
     FEAST_output<-Infer.SourceContribution(
       source=sources,
-      sinks = t(sinks),
-      env = envs[train.ix],
-      em_itr = EM_iterations,
-      COVERAGE = COVERAGE,
+      sinks=t(sinks),
+      env=envs[train.ix],
+      em_itr=EM_iterations,
+      COVERAGE=COVERAGE,
 
       include_epsilon=T,
       alpha_init=alpha_init,
-      unknown_initialize_flag=if(!is.na(sum(unknown_init))) 2 else 1,
+      # unknown_initialize_flag=if(!is.na(inits)) 2 else 1,
+      unknown_initialize_flag=if(is.na(sum(unknown_init))) 1 else 2,
       unknown_init=unknown_init,
       rarefy_unknown=T,
       callback=callback
@@ -172,6 +247,9 @@ FEAST <- function(C, metadata, EM_iterations = 1000, COVERAGE = NULL ,different_
     setwd(dir_path)
     write.table(proportions_mat, file = paste0(outfile,"_source_contributions_matrix.txt"), sep = "\t")
   }
-  return(proportions_mat)
+  return(list(
+    lsq=if (lsq) inits$lsq else NA,
+    proportions_mat=proportions_mat
+  ))
 
 }
