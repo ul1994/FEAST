@@ -219,11 +219,70 @@ unknown_initialize <- function(sources, sink, n_sources){
 
 }
 
+library(glmnet)
+
+lsq_glmnet_l1l2 <- function(
+	sink, sources,
+	l1l2=1, lambda=1e-6,
+	normalize=T) {
+
+	if (normalize) {
+		sources <- sources / rowSums(sources)
+		sink <- sink / sum(sink)
+	}
+
+	Amat <- model.matrix(~Sources, list(Sources=t(sources)))
+	result <- glmnet(Amat, sink, alpha=l1l2, lambda=lambda, lower.limits=0)
+
+	contr <- result$beta[2:length(result$beta)]
+
+	return (contr)
+}
+
+lsq_procedure <- function(sources, sink, unknown_eps=0.01) {
+  weights_l1 <- lsq_glmnet_l1l2(
+    sink,
+    sources,
+    normalize=F,
+    l1l2=1)
+  lsq_init <- weights_l1 / sum(weights_l1)
+
+  # 1. The alpha init
+  # alpha_init <- c(lsq_init, unknown_eps)
+  alpha_init <- c(lsq_init, 0)
+  alpha_init[alpha_init < unknown_eps] <- 0.01/length(alpha_init)
+	alpha_init <- alpha_init / sum(alpha_init)
+
+  # 2. The unknown init
+  max_source <- many_sources[which.max(weights_l1),]
+
+	# We scale the max source according to its given weight
+  print(paste('Scale', max(lsq_init), max(weights_l1)))
+  print(paste('Sum', max(sink), max(max_source)))
+	mixed_max <- max_source * max(lsq_init)
+	unknown_init <- sink - mixed_max
+
+	# unknown_init <- sink - max_source
+	unknown_init[unknown_init < 0] <- 0   # clip at zero
+
+  return (list(
+    lsq=weights_l1,
+    alpha=alpha_init,
+    # alpha=NA,
+    unknown=unknown_init
+  ))
+}
+
 Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
-                  COVERAGE, unknown_initialize_flag = 1,
+                  COVERAGE,
+
+                  lsq=T,
+
+                  unknown_initialize_flag = 1,
                   alpha_init=NA, unknown_init=NA,
                   rarefy_unknown=T,
                   callback=feast_progress){
+
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)
   ind_to_use <- as.numeric(which(test_zeros > 0))
@@ -231,6 +290,22 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
 
   source <- tmp[ind_to_use,]
   sinks <- sinks
+
+
+  if (lsq) {
+    print('Performing LsqFEAST Initialization...')
+
+    inits <- lsq_procedure(
+      source,
+      sinks
+    )
+
+    if (is.na(sum(alpha_init)))
+      alpha_init <- inits$alpha
+    if (is.na(sum(unknown_init)))
+      unknown_init <- inits$unknown
+  }
+
 
   #####adding support for multiple sources#####
   if(length(dim(source)[1]) > 0)
@@ -273,10 +348,7 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
     }
 
     #create unknown for each sink i
-
-    print(paste('Sink count:', sum(sinks)))
     sinks_rarefy <- FEAST_rarefy(matrix(sinks, nrow = 1), maxdepth = apply(totalsource_old, 1, sum)[1]) #make
-    print(paste('Rarefying sink:', sum(sinks_rarefy)))
 
     if(num_sources > 1){
 
@@ -351,11 +423,17 @@ Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_it
   initalphs=initalphs/Reduce("+", initalphs)
   sink_em <- as.matrix(sinks)
 
+  print('Starting Alphas:')
   print(initalphs)
+  print('Input Source Counts (rowSum):')
   print(unlist(lapply(samps, sum)))
+  print('Unknown Source Count (sum):')
   print(sum(unknown_source_rarefy))
+  print('Sink Count (sum):')
   print(sum(sink_em))
-  pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
+
+  # pred_em<-do_EM_basic(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr)
+  pred_em <- rep(NA, length(samps)+1)
 
   tmp<-do_EM(alphas=initalphs, sources=samps, sink=sink_em, iterations=em_itr, observed=observed_samps, callback)
   pred_emnoise <- tmp$toret

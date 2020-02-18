@@ -42,55 +42,6 @@
 #'
 #' @export
 
-library(glmnet)
-
-lsq_glmnet_l1l2 <- function(
-	sink, sources,
-	l1l2=1, lambda=1e-6,
-	normalize=T) {
-
-	if (normalize) {
-		sources <- sources / rowSums(sources)
-		sink <- sink / sum(sink)
-	}
-
-	Amat <- model.matrix(~Sources, list(Sources=t(sources)))
-	result <- glmnet(Amat, sink, alpha=l1l2, lambda=lambda, lower.limits=0)
-
-	contr <- result$beta[2:length(result$beta)]
-
-	return (contr)
-}
-
-lsq_procedure <- function(sources, sink, unknown_eps=0.01) {
-  weights_l1 <- lsq_glmnet_l1l2(
-    sink,
-    sources,
-    normalize=F,
-    l1l2=1)
-  lsq_init <- weights_l1 / sum(weights_l1)
-
-  # 1. The alpha init
-  alpha_init <- c(lsq_init, unknown_eps)
-	alpha_init <- alpha_init / sum(alpha_init)
-
-  # 2. The unknown init
-  max_source <- many_sources[which.max(weights_l1),]
-
-	# We scale the max source according to its given weight
-	mixed_max <- max_source * max(weights_l1)
-	unknown_init <- sink - mixed_max
-
-	# unknown_init <- sink - max_source
-	unknown_init[unknown_init < 0] <- 0   # clip at zero
-
-  return (list(
-    lsq=weights_l1,
-    alpha=alpha_init,
-    unknown=unknown_init
-  ))
-}
-
 # Default arguments are set to reproduce simulation results
 FEAST <- function(C, metadata, EM_iterations=1000,
     COVERAGE=20000,
@@ -194,22 +145,6 @@ FEAST <- function(C, metadata, EM_iterations=1000,
     }
 
 
-    ###7.5 Perform LSQ Procedure if needed
-    inits <- NA
-    if (lsq) {
-      print('Performing LsqFEAST Initialization...')
-
-      inits <- lsq_procedure(
-        sources,
-        sinks
-      )
-
-      if (is.na(sum(alpha_init)))
-        alpha_init <- inits$alpha
-      if (is.na(sum(unknown_init)))
-        unknown_init <- inits$unknown
-    }
-
     ###10. Estimate source proportions for each sink
     # FEAST_output<-Infer.SourceContribution(source=sources, sinks = t(sinks), env = envs[train.ix], em_itr = EM_iterations, COVERAGE = COVERAGE)
     FEAST_output<-Infer.SourceContribution(
@@ -219,10 +154,11 @@ FEAST <- function(C, metadata, EM_iterations=1000,
       em_itr=EM_iterations,
       COVERAGE=COVERAGE,
 
+      lsq=lsq,
+
       include_epsilon=T,
       alpha_init=alpha_init,
-      # unknown_initialize_flag=if(!is.na(inits)) 2 else 1,
-      unknown_initialize_flag=if(is.na(sum(unknown_init))) 1 else 2,
+      unknown_initialize_flag=if(lsq) 2 else 1,
       unknown_init=unknown_init,
       rarefy_unknown=T,
       callback=callback
@@ -248,7 +184,6 @@ FEAST <- function(C, metadata, EM_iterations=1000,
     write.table(proportions_mat, file = paste0(outfile,"_source_contributions_matrix.txt"), sep = "\t")
   }
   return(list(
-    lsq=if (lsq) inits$lsq else NA,
     proportions_mat=proportions_mat
   ))
 
