@@ -44,10 +44,10 @@
 
 # Default arguments are set to reproduce simulation results
 FEAST <- function(C, metadata, EM_iterations=1000,
-    COVERAGE=20000,
+    COVERAGE=10000,
     different_sources_flag=0,
     lsq=T, # Enables LsqFEAST procedure
-    rarefy_sink=F,
+    rarefy_sink=T,
     dir_path=NA, outfile=NA,
 
     # A way to directly pass init arguments if needed
