@@ -254,34 +254,40 @@ lsq_procedure <- function(sources, sink, unknown_eps=0.01) {
 	alpha_init <- alpha_init / sum(alpha_init)
 
   # 2. The unknown init
-  max_source <- many_sources[which.max(weights_l1),]
+	max_source <- sources[which.max(weights_l1),]
 
 	# We scale the max source according to its given weight
   print(paste('Scale', max(lsq_init), max(weights_l1)))
-  print(paste('Sum', max(sink), max(max_source)))
+  print(paste('Max', max(sink), max(max_source)))
 	mixed_max <- max_source * max(lsq_init)
 	unknown_init <- sink - mixed_max
-
 	# unknown_init <- sink - max_source
+
 	unknown_init[unknown_init < 0] <- 0   # clip at zero
 
   return (list(
     lsq=weights_l1,
     alpha=alpha_init,
-    # alpha=NA,
     unknown=unknown_init
   ))
 }
 
-Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data), include_epsilon = T,
-                  COVERAGE,
+feast_progress <- function(name) {
+	return (function(ii, nn, d_alpha) {
+		cat('\r', sprintf('[%s - %d/%d] converge:%.8f   ',
+			name, ii, nn, d_alpha))
+	})
+}
 
-                  lsq=T,
+Infer.SourceContribution <- function(source = sources_data, sinks = sinks, em_itr = 1000, env = rownames(sources_data),
+                                     include_epsilon = T,
+                                     COVERAGE,
+                                     lsq=T,
+                                     unknown_initialize_flag = 1,
+                                     alpha_init=NA, unknown_init=NA,
+                                     rarefy_unknown=T,
+                                     callback=feast_progress('default')){
 
-                  unknown_initialize_flag = 1,
-                  alpha_init=NA, unknown_init=NA,
-                  rarefy_unknown=T,
-                  callback=feast_progress){
 
   tmp <- source
   test_zeros <- apply(tmp, 1, sum)

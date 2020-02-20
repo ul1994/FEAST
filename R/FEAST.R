@@ -42,6 +42,13 @@
 #'
 #' @export
 
+feast_progress <- function(name) {
+	return (function(ii, nn, d_alpha) {
+		cat('\r', sprintf('[%s - %d/%d] converge:%.8f   ',
+			name, ii, nn, d_alpha))
+	})
+}
+
 # Default arguments are set to reproduce simulation results
 FEAST <- function(C, metadata, EM_iterations=1000,
     COVERAGE=10000,
@@ -52,10 +59,10 @@ FEAST <- function(C, metadata, EM_iterations=1000,
 
     # A way to directly pass init arguments if needed
     #  This will override inits of LsqFEAST
-    alpha_init=NA, unknown_init=NA,
+    alpha_init=NA, unknown_init=NA
 
     # function to printout progress of EM
-    callback=feast_progress
+    ,callback=feast_progress('default')
   ){
 
   ###1. Parse metadata and check it has the correct hearer (i.e., Env, SourceSink,	id)

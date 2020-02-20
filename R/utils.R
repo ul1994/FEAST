@@ -87,4 +87,3 @@ jsdmatrix <- function(x){
   }
   return(d)
 }
-
